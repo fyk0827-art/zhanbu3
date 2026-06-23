@@ -133,7 +133,7 @@ html, body, #root {
 .prism-landing-v3 .v3-portrait {
   position: absolute;
   left: 0;
-  bottom: -30%;
+  bottom: -50%;
   width: 58%;
   max-width: 240px;
   z-index: 2;
@@ -438,7 +438,7 @@ html, body, #root {
   .prism-landing-v3 .v3-portrait {
     position: absolute;
     left: 0;
-    bottom: -30%;
+    bottom: -50%;
     width: 85%;
     max-width: 340px;
   }
