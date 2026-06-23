@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { X, Loader2, Check, ChevronRight } from "lucide-react";
 import { questionApi, settingsApi } from "@/services/api";
