@@ -1,7 +1,4 @@
 /* Life Script Landing — mobile-first, responsive desktop */
-html, body, #root {
-  background: #000 !important;
-}
 .prism-landing-v3-wrap {
   min-height: 100vh;
   min-height: 100dvh;
@@ -99,7 +96,7 @@ html, body, #root {
 .prism-landing-v3 .v3-hero-visual {
   position: absolute;
   inset: 0;
-  clip-path: polygon(0 0, 100% 0, 100% 82%, 0 100%);
+  clip-path: polygon(0 0, 100% 0, 100% 72%, 0 100%);
 }
 
 .prism-landing-v3 .v3-texture {
@@ -133,7 +130,7 @@ html, body, #root {
 .prism-landing-v3 .v3-portrait {
   position: absolute;
   left: 0;
-  bottom: -50%;
+  bottom: 0;
   width: 58%;
   max-width: 240px;
   z-index: 2;
@@ -438,7 +435,7 @@ html, body, #root {
   .prism-landing-v3 .v3-portrait {
     position: absolute;
     left: 0;
-    bottom: -50%;
+    bottom: 0;
     width: 85%;
     max-width: 340px;
   }

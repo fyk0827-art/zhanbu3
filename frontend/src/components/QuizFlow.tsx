@@ -18,11 +18,11 @@ interface AgeGroup {
 }
 
 interface QuizFlowProps {
-  ageGroup: AgeGroup;
+  ageGroups: AgeGroup[];
   onClose: () => void;
 }
 
-type QuizStep = "answering" | "result";
+type QuizStep = "age" | "answering" | "result";
 
 const DIMENSIONS = [
   { key: "P", nameKey: "prismDimensionP" },
@@ -38,9 +38,12 @@ function getDimIndex(qIndex: number, total: number): number {
   return Math.min(Math.floor((qIndex / total) * 5), 4);
 }
 
-export default function QuizFlow({ ageGroup, onClose }: QuizFlowProps) {
+export default function QuizFlow({ ageGroups, onClose }: QuizFlowProps) {
   const { t, i18n } = useTranslation();
-  const [step, setStep] = useState<QuizStep>("answering");
+  const [step, setStep] = useState<QuizStep>("age");
+  const [userAge, setUserAge] = useState("");
+  const [ageError, setAgeError] = useState("");
+  const [matchedGroup, setMatchedGroup] = useState<AgeGroup | null>(null);
   const [currentQIndex, setCurrentQIndex] = useState(0);
   const [selections, setSelections] = useState<Record<number, string>>({});
   const [slideKey, setSlideKey] = useState(0);
@@ -53,15 +56,33 @@ export default function QuizFlow({ ageGroup, onClose }: QuizFlowProps) {
   const questionCount = publicSettings?.quizQuestionCount ?? 5;
 
   const { data: fetchedQuestions, isLoading: questionsLoading } = useQuery({
-    queryKey: ["questions", ageGroup.id, i18n.language, questionCount],
+    queryKey: ["questions", matchedGroup?.id, i18n.language, questionCount],
     queryFn: () =>
-      questionApi.list(ageGroup.id, i18n.language),
-    enabled: step === "answering",
+      matchedGroup
+        ? questionApi.list(matchedGroup.id, i18n.language)
+        : Promise.resolve([] as QuestionDTO[]),
+    enabled: !!matchedGroup && step === "answering",
   });
 
   const submitAnswerMutation = useMutation({
     mutationFn: (req: SubmitAnswerRequest) => questionApi.submitAnswer(req),
   });
+
+  const determineAgeGroup = (age: number): AgeGroup | null => {
+    return ageGroups.find((g) => age >= g.minAge && age <= g.maxAge) || null;
+  };
+
+  const handleAgeSubmit = () => {
+    const age = parseInt(userAge);
+    if (isNaN(age) || age < 0 || age > 120) { setAgeError(t("invalidAge")); return; }
+    setAgeError("");
+    const group = determineAgeGroup(age);
+    if (!group) { setAgeError(t("noAgeGroupMatch")); return; }
+    setMatchedGroup(group);
+    setStep("answering");
+    setCurrentQIndex(0);
+    setSlideKey((k) => k + 1);
+  };
 
   const handleSelectOption = (qId: number, key: string) => {
     if (selections[qId]) return;
@@ -79,8 +100,8 @@ export default function QuizFlow({ ageGroup, onClose }: QuizFlowProps) {
   };
 
   const saveAnswers = async (answersMap: Record<number, string>) => {
-    if (!fetchedQuestions) return;
-    const age = Math.floor((ageGroup.minAge + ageGroup.maxAge) / 2);
+    if (!matchedGroup || !fetchedQuestions) return;
+    const age = parseInt(userAge);
     for (const q of fetchedQuestions) {
       const sel = answersMap[q.id];
       if (sel) {
@@ -124,7 +145,34 @@ export default function QuizFlow({ ageGroup, onClose }: QuizFlowProps) {
         </button>
       </div>
 
-      {step === "answering" && (
+      {step === "age" && (
+        <div className="prism-page min-h-screen">
+          <div className="w-full max-w-[400px] text-center">
+            <div className="mb-6"><PrismBrandSymbol size={56} /></div>
+            <h2 className="prism-font-serif text-xl font-bold mb-2" style={{ color: "var(--prism-cream)" }}>
+              {t("howOldAreYou")}
+            </h2>
+            <p className="text-sm mb-8" style={{ color: "rgba(250,246,240,0.4)" }}>{t("ageHelpText")}</p>
+            <input
+              type="number"
+              value={userAge}
+              onChange={(e) => { setUserAge(e.target.value); setAgeError(""); }}
+              onKeyDown={(e) => e.key === "Enter" && handleAgeSubmit()}
+              placeholder={t("enterAge")}
+              min={0}
+              max={120}
+              autoFocus
+              className="prism-input text-center text-2xl prism-font-serif mb-4"
+            />
+            {ageError && <p className="mb-4 text-sm" style={{ color: "var(--prism-danger)" }}>{ageError}</p>}
+            <button className="prism-btn-gold w-full" onClick={handleAgeSubmit} disabled={!userAge.trim()}>
+              {t("continue")}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {step === "answering" && matchedGroup && (
         <div className="prism-page min-h-screen">
           <div className="w-full max-w-[480px] flex flex-col min-h-[85vh] justify-center">
             {questionsLoading ? (
@@ -180,20 +228,20 @@ export default function QuizFlow({ ageGroup, onClose }: QuizFlowProps) {
                 </div>
 
                 <p className="text-center text-xs mt-6 italic min-h-[20px]" style={{ color: "rgba(232,185,81,0.35)" }}>
-                  {currentQIndex + 1} / {qList.length}
+                  {currentQIndex + 1} / {qList.length} · {matchedGroup.name}
                 </p>
               </>
             ) : (
               <div className="text-center py-10" style={{ color: "rgba(250,246,240,0.5)" }}>
-                <p>{t("noQuestionsAvailable", "No questions available.")}</p>
-                <button className="prism-btn-gold mt-6" onClick={onClose}>{t("goBack")}</button>
+                <p>{t("noQuestionsAvailable", "No questions available for this age group.")}</p>
+                <button className="prism-btn-gold mt-6" onClick={() => setStep("age")}>{t("goBack")}</button>
               </div>
             )}
           </div>
         </div>
       )}
 
-      {step === "result" && (
+      {step === "result" && matchedGroup && (
         <div className="prism-page min-h-screen">
           <div className="w-full max-w-[440px] text-center">
             <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full" style={{ background: "rgba(232,185,81,0.12)" }}>

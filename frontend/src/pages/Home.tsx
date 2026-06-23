@@ -25,7 +25,6 @@ export default function Home() {
   });
 
   const questionCount = publicSettings?.quizQuestionCount ?? 5;
-  const defaultGroup = ageGroups?.[3] ?? ageGroups?.[0];
 
   const handleStartTest = () => {
     setShowLanding(false);
@@ -41,8 +40,8 @@ export default function Home() {
     return <PrismLandingV3 onStart={handleStartTest} questionCount={questionCount} />;
   }
 
-  if (showQuiz && defaultGroup) {
-    return <QuizFlow ageGroup={defaultGroup} onClose={handleQuizClose} />;
+  if (showQuiz && ageGroups) {
+    return <QuizFlow ageGroups={ageGroups} onClose={handleQuizClose} />;
   }
 
   return (
@@ -62,21 +61,21 @@ export default function Home() {
             >
               PRISM
             </div>
-             <div
+            <div
               className="prism-font-serif text-[11px] tracking-[5px] mb-10 prism-fade-in prism-fade-d2"
               style={{ color: "rgba(232,185,81,0.45)" }}
             >
-              {t('homeLifeBlueprint')}
+              人 生 剧 本
             </div>
             <h1
               className="prism-font-serif text-[26px] font-bold leading-relaxed mb-4 prism-fade-in prism-fade-d2"
               style={{ color: "var(--prism-cream)" }}
             >
-              {t('homeSoulBlueprint1')}
+              你的灵魂蓝图
               <br />
-              {t('homeSoulBlueprint2')}
+              比你以为的
               <span style={{ color: "var(--prism-gold)", textShadow: "0 0 30px rgba(232,185,81,0.25)" }}>
-                {t('homeSoulBlueprint3')}
+                更精确
               </span>
             </h1>
             <p
@@ -93,12 +92,12 @@ export default function Home() {
                 setShowLanding(false);
                 setShowQuiz(true);
               }}
-              disabled={!defaultGroup}
+              disabled={!ageGroups?.length}
             >
-              {t('homeBeginReading')}
+              开 启 解 读
             </button>
             <p className="mt-6 text-xs prism-fade-in prism-fade-d4" style={{ color: "rgba(250,246,240,0.2)" }}>
-              {t("quizPromptDescription")}
+              {t("quizQuestionCountHint", { count: questionCount })}
             </p>
           </div>
         )}
