@@ -1,0 +1,296 @@
+import { useState, useEffect, useCallback, useRef } from "react";
+import { trackEvent } from "../utils/track";
+import { useLocation } from "react-router";
+import { useTranslation } from "react-i18next";
+import {
+  checkUnlock,
+  checkHealth,
+  createOrder,
+  getOrderStatus,
+  confirmAlipayReturn,
+  confirmWechatReturn,
+  confirmPaypalReturn,
+  mockCompleteOrder,
+  ensurePaymentSchema,
+  PAYMENT_DISABLED,
+  type PaymentMode,
+} from "../services/paymentApi";
+import type { ReportTypeId } from "../types/reportTypes";
+import {
+  getRouterSearchParams,
+  getAlipayReturnParams,
+  stripRouterPaymentParams,
+} from "../utils/routerQuery";
+
+const POLL_INTERVAL_MS = 2000;
+const POLL_MAX_ATTEMPTS = 30;
+
+export function useReportUnlock(
+  reportId: string | null,
+  options?: { reportType?: ReportTypeId }
+) {
+  const { t } = useTranslation();
+  const location = useLocation();
+  const [isUnlocked, setIsUnlocked] = useState(PAYMENT_DISABLED);
+  const [orderId, setOrderId] = useState<string | null>(null);
+  const [paidAt, setPaidAt] = useState<number | null>(null);
+  const [tradeNo, setTradeNo] = useState<string | null>(null);
+  const [loading, setLoading] = useState(!PAYMENT_DISABLED);
+  const [paying, setPaying] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [wechatHint, setWechatHint] = useState<string | null>(null);
+  const [confirmingReturn, setConfirmingReturn] = useState(false);
+  const [pollExhausted, setPollExhausted] = useState(false);
+  const [paymentMode, setPaymentMode] = useState<PaymentMode | null>(
+    PAYMENT_DISABLED ? "disabled" : null
+  );
+  const processedRef = useRef(false);
+
+  const isWeChatInApp = typeof navigator !== "undefined" && /MicroMessenger/i.test(navigator.userAgent);
+
+  useEffect(() => {
+    if (PAYMENT_DISABLED) return;
+    checkHealth()
+      .then((h) => {
+        const mode = h.paymentMode ?? "mock";
+        setPaymentMode(mode);
+        if (mode === "disabled") {
+          setIsUnlocked(true);
+          setLoading(false);
+        }
+      })
+      .catch(() => setPaymentMode("mock"));
+  }, []);
+
+  const refresh = useCallback(async () => {
+    if (PAYMENT_DISABLED) {
+      setIsUnlocked(true);
+      setLoading(false);
+      return;
+    }
+    if (!reportId) {
+      setLoading(false);
+      return;
+    }
+    try {
+      const res = await checkUnlock(reportId);
+      setIsUnlocked(res.unlocked || paymentMode === "disabled");
+      setOrderId(res.orderId ?? null);
+      setPaidAt(res.paidAt ?? null);
+      setTradeNo(res.tradeNo ?? null);
+    } catch {
+      if (!PAYMENT_DISABLED) setIsUnlocked(false);
+    } finally {
+      setLoading(false);
+    }
+  }, [reportId, paymentMode]);
+
+  useEffect(() => {
+    setLoading(true);
+    refresh();
+  }, [refresh]);
+
+  useEffect(() => {
+    if (PAYMENT_DISABLED) return;
+    const params = getRouterSearchParams();
+    const pendingOrderId = params.get("orderId") || params.get("out_trade_no");
+    if (!pendingOrderId) {
+      processedRef.current = false;
+      return;
+    }
+    if (processedRef.current) return;
+    processedRef.current = true;
+
+    let cancelled = false;
+    setPollExhausted(false);
+
+    (async () => {
+      let mode: PaymentMode = "mock";
+      try {
+        const health = await checkHealth();
+        mode = health.paymentMode ?? "mock";
+        if (!cancelled) setPaymentMode(mode);
+      } catch {
+        mode = "mock";
+      }
+
+      const alipayReturn = getAlipayReturnParams();
+      if (alipayReturn && mode === "alipay") {
+        setConfirmingReturn(true);
+        try {
+          const confirmed = await confirmAlipayReturn(alipayReturn);
+          if (!cancelled && confirmed.unlocked) {
+            trackEvent('pay_success', true);
+            setIsUnlocked(true);
+            setOrderId(confirmed.orderId);
+            stripRouterPaymentParams();
+            setConfirmingReturn(false);
+            return;
+          }
+        } catch (e) {
+          if (!cancelled) {
+            trackEvent('pay_fail', true);
+            setError(
+              e instanceof Error
+                ? e.message
+                : t("errorPaymentReturnFailed")
+            );
+          }
+        } finally {
+          if (!cancelled) setConfirmingReturn(false);
+        }
+      }
+
+      if (mode === "paypal") {
+        const paypalToken = params.get("token");
+        if (paypalToken) {
+          setConfirmingReturn(true);
+          try {
+            const confirmed = await confirmPaypalReturn({ token: paypalToken, orderId: pendingOrderId });
+            if (!cancelled && confirmed.unlocked) {
+              trackEvent('pay_success', true);
+              setIsUnlocked(true);
+              setOrderId(confirmed.orderId);
+              stripRouterPaymentParams();
+              setConfirmingReturn(false);
+              return;
+            }
+          } catch {
+            trackEvent('pay_fail', true);
+            /* 由轮询兜底 */
+          } finally {
+            if (!cancelled) setConfirmingReturn(false);
+          }
+        }
+      }
+
+      if (mode === "wechat") {
+        setConfirmingReturn(true);
+        try {
+          const confirmed = await confirmWechatReturn({ orderId: pendingOrderId });
+          if (!cancelled && confirmed.unlocked) {
+            trackEvent('pay_success', true);
+            setIsUnlocked(true);
+            setOrderId(confirmed.orderId);
+            stripRouterPaymentParams();
+            setConfirmingReturn(false);
+            return;
+          }
+        } catch {
+          trackEvent('pay_fail', true);
+          /* notify 延迟时由轮询兜底 */
+        } finally {
+          if (!cancelled) setConfirmingReturn(false);
+        }
+      }
+
+      for (let i = 0; i < POLL_MAX_ATTEMPTS && !cancelled; i++) {
+        try {
+          const o = await getOrderStatus(pendingOrderId);
+          if (o.unlocked || o.status === "paid") {
+            trackEvent('pay_success', true);
+            setIsUnlocked(true);
+            setOrderId(o.orderId);
+            setPaidAt(o.paidAt ?? null);
+            stripRouterPaymentParams();
+            return;
+          }
+        } catch (e) {
+          if (i === 0 && !cancelled) {
+            setError(
+              e instanceof Error
+                ? e.message
+                : t("errorPaymentConnectFailed")
+            );
+          }
+        }
+        await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+      }
+      if (!cancelled) setPollExhausted(true);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [location.search, location.hash, t]);
+
+  const startPay = useCallback(async () => {
+    if (PAYMENT_DISABLED) return;
+    if (!reportId) {
+      setError(t("errorNoReportId"));
+      return;
+    }
+    trackEvent('pay_click', true);
+    setPaying(true);
+    setError(null);
+    setWechatHint(null);
+    setPollExhausted(false);
+    try {
+      let location = "";
+      try { location = sessionStorage.getItem("birth_location") || ""; } catch {}
+      let res;
+      try {
+        res = await createOrder(reportId, { reportType: options?.reportType, payerContact: undefined, location: location || undefined });
+      } catch (firstErr) {
+        const msg = firstErr instanceof Error ? firstErr.message : "";
+        if (/orders|unlocks|数据库|Database|500/.test(msg)) {
+          await ensurePaymentSchema();
+          res = await createOrder(reportId, { reportType: options?.reportType, location: location || undefined });
+        } else {
+          throw firstErr;
+        }
+      }
+      const mode = res.paymentMode ?? paymentMode ?? "mock";
+      if (res.paymentMode) setPaymentMode(res.paymentMode);
+      if (res.alreadyUnlocked) {
+        setIsUnlocked(true);
+        if (res.orderId) setOrderId(res.orderId);
+        return;
+      }
+      const channel = res.channel ?? mode;
+      if (res.wechatInApp && channel === "alipay") {
+        setWechatHint(
+          res.hint ?? t("errorWechatAlipay")
+        );
+        return;
+      }
+      if (!res.orderId) throw new Error(t("errorNoOrderId"));
+
+      // 模拟模式：直接完成支付，无需跳转 localhost:8880 收银台
+      if (mode === "mock") {
+        const paid = await mockCompleteOrder(res.orderId);
+        if (paid.unlocked) {
+          trackEvent('pay_success', true);
+          setIsUnlocked(true);
+          setOrderId(paid.orderId);
+          await refresh();
+        }
+        return;
+      }
+
+      if (!res.payUrl) throw new Error(t("errorNoPayUrl"));
+      window.location.href = res.payUrl;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t("errorCreateOrderFailed"));
+    } finally {
+      setPaying(false);
+    }
+  }, [reportId, paymentMode, options?.reportType, refresh, t]);
+
+  return {
+    isUnlocked,
+    orderId,
+    paidAt,
+    tradeNo,
+    loading,
+    paying,
+    error,
+    wechatHint,
+    isWeChatInApp,
+    paymentMode,
+    confirmingReturn,
+    pollExhausted,
+    startPay,
+    refresh,
+  };
+}
