@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
-import { ageGroupApi, settingsApi } from "@/services/api";
+import { ageGroupApi } from "@/services/api";
 import QuizFlow from "@/components/QuizFlow";
 import PrismBackground from "@/components/prism/PrismBackground";
 import PrismBrandSymbol from "@/components/prism/PrismBrandSymbol";
@@ -17,29 +17,19 @@ export default function Home() {
     queryFn: ageGroupApi.list,
   });
 
-  const { data: publicSettings } = useQuery({
-    queryKey: ["publicSettings"],
-    queryFn: settingsApi.getPublic,
-  });
+  const defaultGroup = ageGroups?.[3] ?? ageGroups?.[0];
 
-  const questionCount = publicSettings?.quizQuestionCount ?? 5;
-
-  // 首次访问：数据就绪后立即进入 PRISM 问答，不再先闪旧首页
   useEffect(() => {
-    if (!ageGroups?.length) return;
-    const hasTaken = sessionStorage.getItem("qaTestTaken");
-    if (!hasTaken) {
-      setShowQuiz(true);
+    if (defaultGroup && !showQuiz) {
+      const hasTaken = sessionStorage.getItem("qaTestTaken");
+      if (!hasTaken) {
+        setShowQuiz(true);
+      }
     }
-  }, [ageGroups]);
+  }, [defaultGroup, showQuiz]);
 
-  const handleQuizClose = () => {
-    setShowQuiz(false);
-    sessionStorage.setItem("qaTestTaken", "true");
-  };
-
-  if (showQuiz && ageGroups) {
-    return <QuizFlow ageGroups={ageGroups} onClose={handleQuizClose} />;
+  if (showQuiz && defaultGroup) {
+    return <QuizFlow ageGroup={defaultGroup} onClose={() => setShowQuiz(false)} />;
   }
 
   return (
@@ -80,19 +70,19 @@ export default function Home() {
               className="text-sm leading-loose mb-12 prism-fade-in prism-fade-d3"
               style={{ color: "rgba(250,246,240,0.5)" }}
             >
-              {t('homeCalibration', { count: questionCount })}
+              {t('homeCalibration', { count: 5 })}
               <br />
               {t('homeStarsConfirm')}
             </p>
             <button
               className="prism-btn-gold prism-fade-in prism-fade-d4"
               onClick={() => setShowQuiz(true)}
-              disabled={!ageGroups?.length}
+              disabled={!defaultGroup}
             >
               {t('homeBeginReading')}
             </button>
             <p className="mt-6 text-xs prism-fade-in prism-fade-d4" style={{ color: "rgba(250,246,240,0.2)" }}>
-              {t("quizQuestionCountHint", { count: questionCount })}
+              {t("quizPromptDescription")}
             </p>
           </div>
         )}
