@@ -42,7 +42,7 @@ export default function QuizFlow({ ageGroups, onClose }: QuizFlowProps) {
   const { t, i18n } = useTranslation();
   const defaultGroup = ageGroups[3] ?? ageGroups[0];
   const defaultAge = Math.floor((defaultGroup.minAge + defaultGroup.maxAge) / 2);
-  const [step] = useState<QuizStep>("answering");
+  const [step, setStep] = useState<QuizStep>("answering");
   const [matchedGroup] = useState<AgeGroup>(defaultGroup);
   const [currentQIndex, setCurrentQIndex] = useState(0);
   const [selections, setSelections] = useState<Record<number, string>>({});
