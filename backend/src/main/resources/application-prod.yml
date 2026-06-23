@@ -1,9 +1,9 @@
 server:
-  port: 8881
+  port: 8891
 
 spring:
   datasource:
-    url: jdbc:mysql://localhost:3306/askzhanbu?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true&createDatabaseIfNotExist=true
+    url: jdbc:mysql://localhost:3306/askzhanbu_main?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true&createDatabaseIfNotExist=true
     username: askzhanbu
     password: Fyk6112212...
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -20,8 +20,8 @@ payment:
   mode: paypal
   order-amount: 2990
   product-title: "人生蓝图·完整行动版"
-  frontend-url: https://askdev.divinlove.com
-  base-url: https://askdev.divinlove.com
+  frontend-url: https://ask.divinlove.com
+  base-url: https://ask.divinlove.com
 
 pay:
   alipay:
