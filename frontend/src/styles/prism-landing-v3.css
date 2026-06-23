@@ -1,4 +1,7 @@
 /* Life Script Landing — mobile-first, responsive desktop */
+html, body, #root {
+  background: #000 !important;
+}
 .prism-landing-v3-wrap {
   min-height: 100vh;
   min-height: 100dvh;
